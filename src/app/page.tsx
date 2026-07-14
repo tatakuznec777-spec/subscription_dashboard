@@ -1,15 +1,34 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useObligationStore } from '@/store/useObligationStore';
-import { getObligations, getUpcoming } from '@/services/api';
+import { 
+  getObligations, 
+  getUpcoming, 
+  getPayments, 
+  payObligation, 
+  cancelObligation, 
+  deleteObligation 
+} from '@/services/api';
+import { useSSE } from '@/hooks/useSSE';
 import { Header } from '@/components/Header/Header';
 import { Filters } from '@/components/Filters/Filters';
 import { ObligationCard } from '@/components/ObligationCard/ObligationCard';
+import { DetailModal } from '@/components/DetailModal/DetailModal';
+import { SSEEvent, Obligation } from '@/types';
 
 export default function Home() {
-  const { obligations, upcoming, setObligations, setUpcoming, filters, setLoading, setError } = useObligationStore();
+  const { 
+    obligations, upcoming, payments, selectedObligation, filters,
+    setObligations, setUpcoming, setSelectedObligation, setPayments,
+    addObligation, updateObligation, removeObligation, addPayment,
+    setLoading, setError 
+  } = useObligationStore();
 
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [exitingId, setExitingId] = useState<number | null>(null);
+
+  // 1. Первоначальная загрузка данных
   useEffect(() => {
     const loadData = async () => {
       setLoading(true);
@@ -21,14 +40,118 @@ export default function Home() {
         setObligations(obsData.items);
         setUpcoming(upcData.renewal_alerts);
       } catch (err) {
-        setError('Ошибка загрузки данных');
-        console.error(err);
+        setError('Ошибка загрузки данных. Проверьте подключение.');
+        console.error('Failed to load initial data:', err);
       } finally {
         setLoading(false);
       }
     };
     loadData();
   }, [setObligations, setUpcoming, setLoading, setError]);
+
+  // 2. Загрузка истории платежей при открытии модального окна
+  useEffect(() => {
+    if (selectedObligation) {
+      getPayments(selectedObligation.id)
+        .then(setPayments)
+        .catch(err => console.error('Ошибка загрузки платежей:', err));
+    }
+  }, [selectedObligation, setPayments]);
+
+  // 3. Подключение SSE (Real-time обновления)
+  useSSE('/api/events', (event: SSEEvent) => {
+    console.log('SSE Event received:', event);
+    const data = event.data as any; // Приведение типа для простоты обработки событий
+    
+    switch (event.type) {
+      case 'obligation_created':
+        addObligation(data);
+        break;
+      case 'obligation_updated':
+        updateObligation(data.id, data);
+        break;
+      case 'obligation_deleted':
+        removeObligation(data.id);
+        if (selectedObligation?.id === data.id) {
+          setIsModalOpen(false);
+          setSelectedObligation(null);
+        }
+        break;
+      case 'payment_recorded':
+        addPayment(data);
+        break;
+    }
+  });
+
+  // --- ОБРАБОТЧИКИ ДЕЙСТВИЙ (Оптимистичные обновления) ---
+
+  const handlePay = async (id: number) => {
+    const originalObs = obligations.find(o => o.id === id);
+    if (!originalObs) return;
+
+    // 1. Оптимистичное обновление (считаем следующую дату на клиенте)
+    let nextDate = new Date(originalObs.next_payment_date);
+    if (originalObs.recurrence === 'monthly') {
+      nextDate.setMonth(nextDate.getMonth() + 1);
+    } else if (originalObs.recurrence === 'yearly') {
+      nextDate.setFullYear(nextDate.getFullYear() + 1);
+    }
+    
+    updateObligation(id, { next_payment_date: nextDate.toISOString() });
+
+    // 2. Отправляем запрос на сервер (или в mock)
+    try {
+      const updated = await payObligation(id);
+      // 3. Синхронизируем с ответом сервера
+      updateObligation(id, updated);
+    } catch (err) {
+      console.warn('Ошибка оплаты, выполняем откат:', err);
+      // 4. Откат при ошибке
+      updateObligation(id, originalObs);
+    }
+  };
+
+  const handleCancel = async (id: number) => {
+    const originalObs = obligations.find(o => o.id === id);
+    if (!originalObs) return;
+
+    // Оптимистично меняем статус
+    updateObligation(id, { status: 'cancelled' });
+
+    try {
+      const updated = await cancelObligation(id);
+      updateObligation(id, updated);
+    } catch (err) {
+      console.warn('Ошибка отмены, выполняем откат:', err);
+      updateObligation(id, originalObs);
+    }
+  };
+
+  const handleDelete = async (id: number) => {
+    const originalObs = obligations.find(o => o.id === id);
+    
+    // 1. Запускаем анимацию и оптимистично удаляем
+    setExitingId(id);
+    removeObligation(id);
+
+    try {
+      await deleteObligation(id);
+      // Успех, завершаем анимацию
+      setTimeout(() => setExitingId(null), 300);
+    } catch (err) {
+      console.warn('Ошибка удаления, выполняем откат:', err);
+      // 2. Откат: возвращаем обязательство обратно в список
+      if (originalObs) {
+        addObligation(originalObs);
+      }
+      setExitingId(null);
+    }
+  };
+
+  const openModal = (obs: Obligation) => {
+    setSelectedObligation(obs);
+    setIsModalOpen(true);
+  };
 
   // Фильтрация основного списка
   const filteredObligations = obligations.filter((obs) => {
@@ -53,7 +176,9 @@ export default function Home() {
               key={obs.id} 
               obligation={obs} 
               isUpcoming={true} 
-              onCancel={(id) => console.log('Cancel', id)} // Пока заглушка
+              onCancel={handleCancel}
+              onClick={() => openModal(obs)}
+              isExiting={exitingId === obs.id}
             />
           ))}
         </section>
@@ -75,11 +200,26 @@ export default function Home() {
               <ObligationCard 
                 key={obs.id} 
                 obligation={obs} 
-                onClick={() => console.log('Open details', obs.id)} // Пока заглушка
+                onClick={() => openModal(obs)}
+                isExiting={exitingId === obs.id}
               />
             ))
         )}
       </section>
+
+      {/* Модальное окно */}
+      <DetailModal
+        obligation={selectedObligation}
+        payments={payments}
+        isOpen={isModalOpen}
+        onClose={() => { 
+          setIsModalOpen(false); 
+          setSelectedObligation(null); 
+        }}
+        onPay={handlePay}
+        onCancel={handleCancel}
+        onDelete={handleDelete}
+      />
     </main>
   );
 }
