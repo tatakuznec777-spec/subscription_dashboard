@@ -195,9 +195,9 @@ payment_recorded — добавление в историю платежей
 
 ## Контакты
 
-Email: support@subscriptions.ru
+Email: engy666@yandex.ru
 
-Telegram: @subscription_support
+Telegram: @kuznetstati
 
 ## Лицензия
 
