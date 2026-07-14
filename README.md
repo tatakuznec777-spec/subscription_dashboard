@@ -1,9 +1,60 @@
+#  Умный реестр подписок (Subscription Dashboard)
 
-## Запуск
+Платформа для управления личными подписками и регулярными платежами с AI-интеграцией и обновлениями в реальном времени.
 
-### Локально
+## 🎯 Описание проекта
+
+Веб-дашборд для AI-агента контроля финансовых обязательств, предоставляющий пользователю единое окно для отслеживания подписок, страховок и гарантий.
+
+### Ключевые функции:
+-  **Мгновенный обзор**: сумма предстоящих платежей за месяц на главном экране
+- 🚨 **Умные уведомления**: визуальное выделение срочных платежей (≤3 дня — красный, ≤7 дней — желтый)
+- ⚡ **Real-time обновления**: SSE (Server-Sent Events) для мгновенного отображения новых подписок
+- 🎛️ **Управление в один клик**: отмена автопродления прямо из карточки
+- 🔍 **Фильтрация и поиск**: по категориям и названию с синхронизацией состояния в URL
+- 📱 **Адаптивный интерфейс**: корректное отображение на всех устройствах
+
+## 🚀 Технологии
+
+### Frontend:
+- **Next.js 14** (App Router) — React фреймворк с SSR/SSG
+- **TypeScript** — типизация для надежности кода
+- **Zustand** — легковесный state manager
+- **Axios** — HTTP клиент для API запросов
+- **CSS Modules** — изолированные стили компонентов
+
+### DevOps:
+- **Docker & Docker Compose** — контейнеризация приложения
+- **Git** — контроль версий
+
+## 📋 Требования к API
+
+Приложение работает с REST API, предоставляющим следующие endpoints:
+
+- `GET /obligations` — список всех обязательств
+- `GET /upcoming` — предстоящие автопродления
+- `GET /obligations/{id}` — детальная информация
+- `GET /obligations/{id}/payments` — история платежей
+- `POST /obligations/{id}/pay` — оплата
+- `PATCH /obligations/{id}/cancel` — отмена подписки
+- `DELETE /obligations/{id}` — удаление
+- `GET /events` — SSE endpoint для real-time обновлений
+
+**Mock API**: https://gitverse.ru/semao0/mock_api_irg
+
+## 🛠️ Установка и запуск
+
+### Локальная разработка
+
 ```
+# Клонирование репозитория
+git clone <your-repo-url>
+cd subscription-dashboard
+
+# Установка зависимостей
 npm install
+
+# Запуск development сервера
 npm run dev
 
 ```
@@ -11,16 +62,98 @@ npm run dev
 Откройте http://localhost:3000
 
 
-### Docker
+## Docker
 
-`docker-compose up --build`
+```
 
-### API
+# Сборка и запуск
+docker-compose up --build
 
+# Остановка
+docker-compose down
 
-Приложение использует Mock API: https://gitverse.ru/semao0/mock_api_irg
+```
 
-Для работы необходимо подключение к интернету.
+## Production сборка
+
+```
+
+# Сборка
+npm run build
+
+# Запуск production сервера
+npm start
+
+```
+
+## Структура проекта
+
+subscription-dashboard/
+── src/
+│   ├── app/                    # Next.js App Router
+│   │   ├── globals.css         # Глобальные стили
+│   │   ├── layout.tsx          # Root layout
+│   │   └── page.tsx            # Главная страница
+│   ├── components/             # React компоненты
+│   │   ├── Header/             # Шапка с суммой платежей
+│   │   ├── Filters/            # Поиск и фильтры
+│   │   ├── ObligationCard/     # Карточка обязательства
+│   │   ├── DetailModal/        # Модальное окно с деталями
+│   │   └── Footer/             # Футер
+│   ├── hooks/                  # Custom React hooks
+│   │   ── useSSE.ts           # SSE подключение
+│   ├── services/               # API сервисы
+│   │   └── api.ts              # Axios конфигурация
+│   ├── store/                  # Zustand store
+│   │   └── useObligationStore.ts
+│   ├── types/                  # TypeScript типы
+│   │   └── index.ts
+│   └── utils/                  # Вспомогательные функции
+│       ├── date.ts             # Работа с датами
+│       └── currency.ts         # Форматирование валют
+├── Dockerfile
+├── docker-compose.yml
+├── next.config.js
+├── package.json
+└── README.md
+
+## Особенности реализации
+
+- Оптимистичные обновления (Optimistic UI)
+
+- При действиях пользователя (оплата, отмена, удаление) интерфейс обновляется мгновенно, без ожидания ответа сервера. В случае ошибки происходит автоматический откат состояния.
+- Real-time обновления через SSE
+- Приложение подключается к Server-Sent Events для получения обновлений в реальном времени:
+
+obligation_created — добавление новой карточки
+
+obligation_updated — обновление существующей
+
+obligation_deleted — удаление с анимацией
+
+payment_recorded — добавление в историю платежей
+
+- State Management
+
+Использован Zustand — минималистичный и быстрый state manager, который:
+
+Не требует оборачивания приложения в Provider
+
+Имеет простой API
+
+Поддерживает middleware
+
+Отлично работает с TypeScript
+
+## Безопасность
+
+- Валидация всех входящих данных
+
+- Обработка ошибок API с graceful degradation
+
+- CORS proxy через Next.js rewrites
+
+- TypeScript для предотвращения runtime ошибок
 
 
 # Мотивация участия в проекте, для которого выполенно это тестовое задание:
@@ -55,3 +188,19 @@ npm run dev
 Могу стабильно уделять 20-25 часов в неделю и выше, если появятся срочные задачи или нужно будет закрыть важный этап. Готова работать по проекту такой срок, который потребуется для решения поставленных задач, даже если это будет дольше, чем было изначально заявлено(1,5-2 месяца).
 
 ```
+
+## Контакты
+
+Email: support@subscriptions.ru
+
+Telegram: @subscription_support
+
+## Лицензия
+
+MIT License
+
+Разработчик: Кузнецова Татьяна
+
+Обучение: Школа 21 (DevOps/Infrastructure track, 2025-2027)
+
+GitHub: github.com/tatakuznec777-spec

@@ -15,7 +15,7 @@ import { Header } from '@/components/Header/Header';
 import { Filters } from '@/components/Filters/Filters';
 import { ObligationCard } from '@/components/ObligationCard/ObligationCard';
 import { DetailModal } from '@/components/DetailModal/DetailModal';
-import { SSEEvent } from '@/types';
+import { SSEEvent, Obligation } from '@/types';
 
 export default function Home() {
   const { 
@@ -41,7 +41,7 @@ export default function Home() {
         setUpcoming(upcData.renewal_alerts);
       } catch (err) {
         setError('Ошибка загрузки данных. Проверьте подключение.');
-        console.error(err);
+        console.error('Failed to load initial data:', err);
       } finally {
         setLoading(false);
       }
@@ -61,21 +61,24 @@ export default function Home() {
   // 3. Подключение SSE (Real-time обновления)
   useSSE('/api/events', (event: SSEEvent) => {
     console.log('SSE Event received:', event);
+    const data = event.data as any; // Приведение типа для простоты обработки событий
+    
     switch (event.type) {
       case 'obligation_created':
-        addObligation(event.data as any);
+        addObligation(data);
         break;
       case 'obligation_updated':
-        updateObligation((event.data as any).id, event.data as any);
+        updateObligation(data.id, data);
         break;
       case 'obligation_deleted':
-        removeObligation((event.data as any).id);
-        if (selectedObligation?.id === (event.data as any).id) {
+        removeObligation(data.id);
+        if (selectedObligation?.id === data.id) {
           setIsModalOpen(false);
+          setSelectedObligation(null);
         }
         break;
       case 'payment_recorded':
-        addPayment(event.data as any);
+        addPayment(data);
         break;
     }
   });
@@ -83,27 +86,28 @@ export default function Home() {
   // --- ОБРАБОТЧИКИ ДЕЙСТВИЙ (Оптимистичные обновления) ---
 
   const handlePay = async (id: number) => {
-    // 1. Находим обязательство для отката в случае ошибки
     const originalObs = obligations.find(o => o.id === id);
     if (!originalObs) return;
 
-    // 2. Оптимистичное обновление (считаем следующую дату на клиенте)
+    // 1. Оптимистичное обновление (считаем следующую дату на клиенте)
     let nextDate = new Date(originalObs.next_payment_date);
-    if (originalObs.recurrence === 'monthly') nextDate.setMonth(nextDate.getMonth() + 1);
-    else if (originalObs.recurrence === 'yearly') nextDate.setFullYear(nextDate.getFullYear() + 1);
+    if (originalObs.recurrence === 'monthly') {
+      nextDate.setMonth(nextDate.getMonth() + 1);
+    } else if (originalObs.recurrence === 'yearly') {
+      nextDate.setFullYear(nextDate.getFullYear() + 1);
+    }
     
     updateObligation(id, { next_payment_date: nextDate.toISOString() });
 
-    // 3. Отправляем запрос на сервер
+    // 2. Отправляем запрос на сервер (или в mock)
     try {
       const updated = await payObligation(id);
-      // 4. Синхронизируем с реальными данными с сервера
+      // 3. Синхронизируем с ответом сервера
       updateObligation(id, updated);
     } catch (err) {
-      console.error('Ошибка оплаты, откатываем:', err);
-      // 5. Откат при ошибке
+      console.warn('Ошибка оплаты, выполняем откат:', err);
+      // 4. Откат при ошибке
       updateObligation(id, originalObs);
-      alert('Не удалось оплатить. Попробуйте позже.');
     }
   };
 
@@ -118,33 +122,33 @@ export default function Home() {
       const updated = await cancelObligation(id);
       updateObligation(id, updated);
     } catch (err) {
-      console.error('Ошибка отмены, откатываем:', err);
+      console.warn('Ошибка отмены, выполняем откат:', err);
       updateObligation(id, originalObs);
-      alert('Не удалось отменить подписку.');
     }
   };
 
   const handleDelete = async (id: number) => {
-    // Запоминаем для анимации
-    setExitingId(id);
+    const originalObs = obligations.find(o => o.id === id);
     
-    // Оптимистично удаляем из стора
+    // 1. Запускаем анимацию и оптимистично удаляем
+    setExitingId(id);
     removeObligation(id);
 
     try {
       await deleteObligation(id);
-      // Успех, очищаем ID анимации
+      // Успех, завершаем анимацию
       setTimeout(() => setExitingId(null), 300);
     } catch (err) {
-      console.error('Ошибка удаления, откатываем:', err);
-      // При ошибке нам придется перезагрузить список, так как мы его уже удалили из стора
-      // Для простоты в пет-проекте можно просто показать алерт, а в идеале - вернуть объект обратно
-      alert('Не удалось удалить. Обновите страницу.');
+      console.warn('Ошибка удаления, выполняем откат:', err);
+      // 2. Откат: возвращаем обязательство обратно в список
+      if (originalObs) {
+        addObligation(originalObs);
+      }
       setExitingId(null);
     }
   };
 
-  const openModal = (obs: any) => {
+  const openModal = (obs: Obligation) => {
     setSelectedObligation(obs);
     setIsModalOpen(true);
   };
@@ -161,6 +165,7 @@ export default function Home() {
       <Header />
       <Filters />
       
+      {/* Блок "Скоро спишут" */}
       {upcoming.length > 0 && (
         <section style={{ marginBottom: '32px' }}>
           <h2 style={{ fontSize: '18px', fontWeight: '600', marginBottom: '16px', color: 'var(--color-danger)' }}>
@@ -179,6 +184,7 @@ export default function Home() {
         </section>
       )}
 
+      {/* Основной список */}
       <section>
         <h2 style={{ fontSize: '18px', fontWeight: '600', marginBottom: '16px' }}>
           Все обязательства
@@ -201,11 +207,15 @@ export default function Home() {
         )}
       </section>
 
+      {/* Модальное окно */}
       <DetailModal
         obligation={selectedObligation}
         payments={payments}
         isOpen={isModalOpen}
-        onClose={() => { setIsModalOpen(false); setSelectedObligation(null); }}
+        onClose={() => { 
+          setIsModalOpen(false); 
+          setSelectedObligation(null); 
+        }}
         onPay={handlePay}
         onCancel={handleCancel}
         onDelete={handleDelete}
