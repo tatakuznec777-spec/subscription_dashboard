@@ -8,6 +8,12 @@ export const useSSE = (url: string, onEvent: EventHandler) => {
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const connect = useCallback(() => {
+    // Проверяем, что мы в браузере
+    if (typeof window === 'undefined' || typeof window.EventSource === 'undefined') {
+      console.log('SSE not available (SSR or no EventSource support)');
+      return;
+    }
+
     console.log('Connecting to SSE...');
     const eventSource = new EventSource(url);
     eventSourceRef.current = eventSource;
@@ -49,7 +55,10 @@ export const useSSE = (url: string, onEvent: EventHandler) => {
     };
   }, [connect]);
 
+  // Проверяем существование EventSource
+  const isConnected = typeof window !== 'undefined' && typeof EventSource !== 'undefined' && eventSourceRef.current?.readyState === EventSource.OPEN;
+
   return {
-    isConnected: eventSourceRef.current?.readyState === EventSource.OPEN,
+    isConnected,
   };
 };
