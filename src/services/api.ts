@@ -63,7 +63,7 @@ export const getObligations = async (): Promise<ObligationsResponse> => {
   try {
     const response = await api.get<ObligationsResponse>('/obligations');
     return response.data;
-  } catch (error) {
+  } catch {
     console.warn('API недоступен, используем mock данные');
     return mockObligations;
   }
@@ -74,7 +74,7 @@ export const getUpcoming = async (): Promise<UpcomingResponse> => {
   try {
     const response = await api.get<UpcomingResponse>('/upcoming');
     return response.data;
-  } catch (error) {
+  } catch {
     console.warn('API недоступен, используем mock данные');
     return mockUpcoming;
   }
@@ -91,7 +91,7 @@ export const getPayments = async (obligationId: number): Promise<Payment[]> => {
   try {
     const response = await api.get<Payment[]>(`/obligations/${obligationId}/payments`);
     return response.data;
-  } catch (error) {
+  } catch {
     console.warn('История платежей недоступна');
     return [
       {
@@ -110,7 +110,7 @@ export const payObligation = async (id: number): Promise<Obligation> => {
   try {
     const response = await api.post<Obligation>(`/obligations/${id}/pay`);
     return response.data;
-  } catch (error) {
+  } catch {
     console.log('Mock: оплата выполнена локально');
     // Возвращаем mock обновленное обязательство
     const mockObligation = mockObligations.items.find(o => o.id === id);
@@ -136,7 +136,7 @@ export const cancelObligation = async (id: number): Promise<Obligation> => {
   try {
     const response = await api.patch<Obligation>(`/obligations/${id}/cancel`);
     return response.data;
-  } catch (error) {
+  } catch {
     console.log('Mock: отмена выполнена локально');
     const mockObligation = mockObligations.items.find(o => o.id === id);
     if (!mockObligation) throw new Error('Obligation not found');
@@ -153,7 +153,7 @@ export const cancelObligation = async (id: number): Promise<Obligation> => {
 export const deleteObligation = async (id: number): Promise<void> => {
   try {
     await api.delete(`/obligations/${id}`);
-  } catch (error) {
+  } catch {
     console.log('Mock: удаление выполнено локально');
     // Ничего не делаем, удаление уже произошло в UI оптимистично
   }

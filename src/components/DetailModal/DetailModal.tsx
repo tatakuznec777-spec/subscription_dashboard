@@ -332,7 +332,7 @@ export const DetailModal = ({
         >
           <h3 style={{ marginBottom: '16px' }}>Удаление обязательства</h3>
           <p style={{ marginBottom: '20px', color: '#666' }}>
-            Вы уверены, что хотите удалить "{obligation.name}"? Это действие нельзя отменить.
+            Вы уверены, что хотите удалить &quot;{obligation.name}&quot;? Это действие нельзя отменить.
           </p>
           <div style={{ display: 'flex', gap: '12px' }}>
             <button

@@ -15,7 +15,7 @@ import { Header } from '@/components/Header/Header';
 import { Filters } from '@/components/Filters/Filters';
 import { ObligationCard } from '@/components/ObligationCard/ObligationCard';
 import { DetailModal } from '@/components/DetailModal/DetailModal';
-import { SSEEvent, Obligation } from '@/types';
+import { SSEEvent, Obligation, Payment } from '@/types';
 
 export default function Home() {
   const { 
@@ -60,28 +60,30 @@ export default function Home() {
 
   // 3. Подключение SSE (Real-time обновления)
   useSSE('/api/events', (event: SSEEvent) => {
-    console.log('SSE Event received:', event);
-    const data = event.data as any; // Приведение типа для простоты обработки событий
-    
-    switch (event.type) {
-      case 'obligation_created':
-        addObligation(data);
-        break;
-      case 'obligation_updated':
-        updateObligation(data.id, data);
-        break;
-      case 'obligation_deleted':
-        removeObligation(data.id);
-        if (selectedObligation?.id === data.id) {
-          setIsModalOpen(false);
-          setSelectedObligation(null);
-        }
-        break;
-      case 'payment_recorded':
-        addPayment(data);
-        break;
-    }
-  });
+  console.log('SSE Event received:', event);
+  
+  switch (event.type) {
+    case 'obligation_created':
+      // TypeScript теперь знает, что это Obligation
+      addObligation(event.data as Obligation);
+      break;
+    case 'obligation_updated':
+      const updatedObs = event.data as Obligation;
+      updateObligation(updatedObs.id, updatedObs);
+      break;
+    case 'obligation_deleted':
+      const deletedObs = event.data as Obligation;
+      removeObligation(deletedObs.id);
+      if (selectedObligation?.id === deletedObs.id) {
+        setIsModalOpen(false);
+        setSelectedObligation(null);
+      }
+      break;
+    case 'payment_recorded':
+      addPayment(event.data as Payment);
+      break;
+  }
+});
 
   // --- ОБРАБОТЧИКИ ДЕЙСТВИЙ (Оптимистичные обновления) ---
 
@@ -90,7 +92,7 @@ export default function Home() {
     if (!originalObs) return;
 
     // 1. Оптимистичное обновление (считаем следующую дату на клиенте)
-    let nextDate = new Date(originalObs.next_payment_date);
+    const nextDate = new Date(originalObs.next_payment_date);
     if (originalObs.recurrence === 'monthly') {
       nextDate.setMonth(nextDate.getMonth() + 1);
     } else if (originalObs.recurrence === 'yearly') {
